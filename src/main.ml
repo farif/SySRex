@@ -1,5 +1,5 @@
 (* 
-    Goal: Learning minimal regular expressions from finite words. 
+    Regular expressions over finite words. 
 *)
 
 (* Read atomic propostions *)
