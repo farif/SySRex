@@ -1,0 +1,130 @@
+(set-logic ALL)
+
+(set-option :sygus-out status-and-def)
+(set-option :sygus-rec-fun true)
+(set-option :e-matching false)
+
+(define-sort VarId () Int)
+
+; Declare Unary Operators.
+(declare-datatype UNARY_OP ( (NOT) ))
+(declare-datatype UNARY_ROP ( (STAR) ))
+
+; Declare Binary Operators.
+(declare-datatype BINARY_OP ( (AND) (OR) (IMPLIES) ))
+(declare-datatype BINARY_ROP ( (CHOICE) (CONCAT) ))
+
+; Propositional Formula.
+(declare-datatype Formula (
+  (Top)
+  (Bottom) 
+  (P (Id VarId))
+  (Op1 (op1 UNARY_OP) (f Formula))
+  (Op2 (op2 UNARY_OP) (f1 Formula) (f2 Formula))
+  )
+)
+
+; Regular Expression over Formula alphabets.
+(declare-datatype RegExp (
+  (Empty)
+  (P (Id RegExp))
+  (Op1 (op1 UNARY_ROP) (f RegExp))
+  (Op2 (op2 BINARY_ROP) (f1 RegExp) (f2 RegExp))
+  )
+)
+
+;Sygus Grammar Definition.
+
+(synth-fun phi () Formula
+  ((<F> Formula) (<I> Int) (<O1> UNARY_OP) (<O2> BINARY_OP))
+  ((<F> Formula (
+     Top
+     Bottom  
+     (P <I>)
+     (Op1 <O1> <F>)
+     (Op2 <O2> <F> <F>)
+     )
+   )
+   (<O1> UNARY_OP (NOT))
+   (<O2> BINARY_OP (AND OR IMPLIES))
+   )
+)
+
+(synth-fun phi () RegExp
+  ((<R> RegExp) (<P> Fomula) (<O1> UNARY_ROP) (<O2> BINARY_ROP))
+  ((<R> RegExp (      
+     (P <P>)
+     (Op1 <R> <O1>)
+     (Op2 <O2> <R> <R>)
+     )
+   )
+   (<O1> UNARY_ROP (STAR))
+   (<O2> BINARY_ROP (CHOICE CONCAT))
+   )
+)
+
+(define-sort Index () Int)
+; Char of Strings or List of Strings?
+(define-sort Word () String)
+
+
+(define-fun-rec holds ((f Formula) (w Word) (t Index)) Bool
+    (match f (
+
+        (Top true)
+        
+        (Bottom false)
+    
+        ((P i) (= w[t] t i))
+    
+        ((Op1 op g) 
+            (match op (
+                (NOT (not (holds g tr t))) 
+
+            )
+        ))
+
+        ((Op2 op f1 g)     
+        (match op (
+            (AND (and (holds f1 tr t) (holds g tr t)))
+            (OR  (or (holds f1 tr t) (holds g tr t)))
+            (IMPLIES (or (not (holds f1 tr t)) (holds g tr t)))
+         )))
+     )
+  )
+)
+
+(define-fun-rec matches ((r RegExp) (w Word) (i Index) (j Index)) Bool
+    (match r (
+
+        (Empty (= i j)
+            
+        ((P p) (And (= j (+ i 1)) (holds p w t i)))
+    
+        ((Op1 op g) 
+            (match op (
+                
+                ; u[i,j] \model p1 star  iff i = j or \exists k\in{i+1,...,j} (w[i,k] \models p1 and w[k,j] \models p1.star)        
+
+                (STAR (or (= i j) ((\exists k\in{i+1,...,j} (and (matches r1 w i k) (matches r w k j)))))) 
+
+            )
+        ))
+
+        ((Op2 op r1 r2)     
+        (match op (
+
+            (CHOICE  (or (matches r1 w i j) (matches r2 w i j)))
+            
+            ; u[i,j] \model p1 star  iff i = j or \exists k\in{i+1,...,j} (w[i,k] \models p1 and w[k,j] \models p1.star)         
+
+            (CONCAT (\exists k\in{i,...,j} (and (matches r1 w i k) (matches r2 w k j))))
+
+         )))
+     )
+  )
+)
+
+(constraint (matches pos_word 0 (len w)))
+
+(check-synth)
